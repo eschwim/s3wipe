@@ -1,19 +1,10 @@
 #!/usr/bin/python
 
-# s3wipe - Eric Schwimmer (eric@nerdvana.org)
-#
-# A python script to rapidly delete all of the objects contained within
-# an S3 bucket, as well as the bucket  itself.  Running from an EC2
-# instance in the same region as the bucket it is deleting, this script
-# can delete around 5000 objects/second (including versioned objects).
-#
-# Licensed via the MIT License (http://opensource.org/licenses/MIT)
-
 import argparse, Queue, logging, random, sys
-import multiprocessing, signal
+import multiprocessing, signal, re
 from multiprocessing.pool import ThreadPool
 
-version = "0.1"
+version = "0.2"
 
 # Make sure we have a semi-recent version of boto installed
 try:
@@ -24,29 +15,47 @@ except:
     print "ERROR: s3wipe requires boto v2.5.2 or later!"
     sys.exit(1)
 
+# Format specifier for our S3 object
+def s3Path(path):
+
+    match = re.match('s3://([^/]+)(?:/([^/]+(?:/[^/]+)*))?$', path)
+    if match:
+        return match.groups()
+    else:
+        raise argparse.ArgumentTypeError(
+            "must be in the 's3://bucket[/path]' format")
+
 # Fetch our command line arguments
 def getArgs():
     parser = argparse.ArgumentParser(
         prog="s3wipe",
-        description="Delete all keys in an S3 bucket",
-        formatter_class=lambda prog: argparse.HelpFormatter(prog,max_help_position=27))
+        description="Recursively delete all keys in an S3 path",
+        formatter_class=lambda prog: 
+            argparse.HelpFormatter(prog,max_help_position=27))
 
-    parser.add_argument("--bucket", 
-        help="Bucket name to delete", required=True)
+    parser.add_argument("--path", type=s3Path,
+        help="S3 path to delete (e.g. s3://bucket/path)", required=True)
     parser.add_argument("--id", 
         help="Your AWS access key ID", required=True)
     parser.add_argument("--key", 
         help="Your AWS secret access key", required=True)
+    parser.add_argument("--dryrun", 
+        help="Don't delete.  Print what we would have deleted", 
+        action='store_true')
     parser.add_argument("--quiet", 
         help="Suprress all non-error output", action='store_true')
-    parser.add_argument("--batchSize", 
+    parser.add_argument("--batchsize", 
         help="# of keys to batch delete (default 100)", 
         type=int, default=100)
-    parser.add_argument("--maxQueue", 
+    parser.add_argument("--maxqueue", 
         help="Max size of deletion queue (default 10k)", 
         type=int, default=10000)
+    parser.add_argument("--delbucket", 
+        help="If S3 path is a bucket path, delete the bucket also",
+        action='store_true')
 
     return parser.parse_args()
+
 
 # Set up our logging object
 def loggerSetup(args):
@@ -83,7 +92,8 @@ def deleter(args, rmQueue, numThreads):
     myconn = boto.s3.connection.S3Connection(                                  
         aws_access_key_id=args.id,
         aws_secret_access_key=args.key)
-    mybucket = myconn.get_bucket(args.bucket)
+    bucket, path = args.path
+    mybucket = myconn.get_bucket(bucket)
 
     done = False
     rmKeys = []
@@ -97,9 +107,13 @@ def deleter(args, rmQueue, numThreads):
         # Poll our deletion queue until it is empty or
         # until we have accumulated enough keys in this
         # thread's delete list to justify a batch delete
-        if len(rmKeys) >= args.batchSize or rmQueue.empty():
+        if len(rmKeys) >= args.batchsize or rmQueue.empty():
             try:
-                mybucket.delete_keys(rmKeys)
+                if args.dryrun:
+                    for key in rmKeys:
+                        logger.info("Would have deleted '%s'" % key.name)
+                else:
+                    mybucket.delete_keys(rmKeys)
             except:
                 continue
 
@@ -108,7 +122,7 @@ def deleter(args, rmQueue, numThreads):
             rmKeys = []
 
             # Print some progress info
-            if random.randint(0,numThreads) == numThreads:
+            if random.randint(0,numThreads) == numThreads and not args.dryrun:
                 logger.info("Deleted %s out of %s keys found thus far.",
                     keysDeleted.value, keysFound.value)
 
@@ -128,7 +142,8 @@ def lister(subDir):
     myconn = boto.s3.connection.S3Connection(                                  
         aws_access_key_id=args.id,
         aws_secret_access_key=args.key)
-    mybucket = myconn.get_bucket(args.bucket)
+    bucket, path = args.path
+    mybucket = myconn.get_bucket(bucket)
 
     # Iterate through bucket and enqueue all keys found in
     # our deletion queue
@@ -146,7 +161,7 @@ def main():
     # Set up the logging object
     loggerSetup(args)
 
-    rmQueue = Queue.Queue(maxsize=args.maxQueue)
+    rmQueue = Queue.Queue(maxsize=args.maxqueue)
 
     # Catch ctrl-c to exit cleanly
     signal.signal(signal.SIGINT, lambda x,y: sys.exit(0))
@@ -156,7 +171,9 @@ def main():
     keysFound = multiprocessing.Value("i",0)
     keysDeleted = multiprocessing.Value("i",0)
 
-    logger.info("Getting bucket subdirs to feed to list threads")
+    bucket, path = args.path
+    logger.info("Deleting from bucket: %s, path: %s" % (bucket,path))
+    logger.info("Getting subdirs to feed to list threads")
 
     # Our main boto object.  Really only used to start the
     # watcher threads on a per-subdir basis
@@ -165,18 +182,18 @@ def main():
         aws_secret_access_key=args.key)
 
     try:
-        bucket = conn.get_bucket(args.bucket)
+        mybucket = conn.get_bucket(bucket)
 
     except boto.s3.connection.S3ResponseError as e:
         shortErr = str(e).split('\n')[0]                
         logger.error(shortErr)
         sys.exit(1)
 
-    bucket.configure_versioning(True)
+    mybucket.configure_versioning(True)
 
     # Poll the root-level directories in the s3 bucket, and
     # start a reader process for each one of them
-    subDirs = list(bucket.list_versions(delimiter="/"))
+    subDirs = list(mybucket.list_versions(prefix=path, delimiter="/"))
     listThreads = len(subDirs)
     deleteThreads = listThreads*2
 
@@ -196,9 +213,20 @@ def main():
         listerPool.map(lister, subDirs)
         rmQueue.join()
 
-    logger.info("Bucket is empty.  Attempting to remove bucket")
-    conn.delete_bucket(args.bucket)
+    logger.info("Done deleting keys")
 
+    if args.delbucket and path is None:
+        if list(mybucket.list_versions(delimiter='/')):
+            logger.info("Bucket not empty.  Not removing (this can happen "  +
+                "when deleting large amounts of files.  It sometimes takes " +
+                "the S3 service a while (minutes to days) to catch up.")
+
+        else:
+            if args.dryrun:
+                logger.info("Bucket is empty.  Would have removed bucket")
+            else:
+                logger.info("Bucket is empty.  Attempting to remove bucket")
+                conn.delete_bucket(mybucket)
 
 if __name__ == "__main__":
     main()

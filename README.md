@@ -47,7 +47,7 @@ _or_
 
 Then:
 
-    wget https://raw.github.com/lathanh/s3nukem/master/s3nukem
+    wget https://raw.github.com/eschwim/s3wipe/master/s3wipe
     chmod 755 s3wipe
     
 ## Usage

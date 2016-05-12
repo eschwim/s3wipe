@@ -3,6 +3,7 @@
 import argparse, Queue, logging, random, sys
 import multiprocessing, signal, re
 from multiprocessing.pool import ThreadPool
+import boto.s3.connection
 
 version = "0.2"
 
@@ -36,9 +37,9 @@ def getArgs():
     parser.add_argument("--path", type=s3Path,
         help="S3 path to delete (e.g. s3://bucket/path)", required=True)
     parser.add_argument("--id", 
-        help="Your AWS access key ID", required=True)
+        help="Your AWS access key ID", required=False)
     parser.add_argument("--key", 
-        help="Your AWS secret access key", required=True)
+        help="Your AWS secret access key", required=False)
     parser.add_argument("--dryrun", 
         help="Don't delete.  Print what we would have deleted", 
         action='store_true')

@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
 import argparse, Queue, logging, random, sys
-import multiprocessing, signal, re
+import multiprocessing, signal, re, ssl
 from multiprocessing.pool import ThreadPool
 import boto.s3.connection
 
-version = "0.2"
+version = "0.3"
 
 # Make sure we have a semi-recent version of boto installed
 try:
@@ -15,6 +15,18 @@ try:
 except:
     print "ERROR: s3wipe requires boto v2.5.2 or later!"
     sys.exit(1)
+
+# Monkey patch to work around https://github.com/boto/boto/issues/2836
+# Thanks to @oberstet for the patch and @stilford for pointing it out
+_old_match_hostname = ssl.match_hostname
+
+def _new_match_hostname(cert, hostname):
+   if hostname.endswith('.s3.amazonaws.com'):
+      pos = hostname.find('.s3.amazonaws.com')
+      hostname = hostname[:pos].replace('.', '') + hostname[pos:]
+   return _old_match_hostname(cert, hostname)
+
+ssl.match_hostname = _new_match_hostname
 
 # Format specifier for our S3 object
 def s3Path(path):
@@ -178,6 +190,7 @@ def main():
 
     # Our main boto object.  Really only used to start the
     # watcher threads on a per-subdir basis
+
     conn = boto.s3.connection.S3Connection(                                  
         aws_access_key_id=args.id,
         aws_secret_access_key=args.key)

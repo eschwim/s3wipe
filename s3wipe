@@ -4,6 +4,7 @@ import argparse, Queue, logging, random, sys
 import multiprocessing, signal, re
 from multiprocessing.pool import ThreadPool
 import boto.s3.connection
+from datetime import datetime, date, time, timedelta
 
 version = "0.2"
 
@@ -54,6 +55,8 @@ def getArgs():
     parser.add_argument("--delbucket", 
         help="If S3 path is a bucket path, delete the bucket also",
         action='store_true')
+    parser.add_argument("--olderthanhours", 
+        type=int, help="Time in hours from current time e.g 3 (default = now)", required=False)
 
     return parser.parse_args()
 
@@ -85,6 +88,14 @@ def loggerSetup(args):
     # Supress boto debug logging, since it is very chatty    
     logging.getLogger("boto").setLevel(logging.CRITICAL)     
 
+# check if object is older than specified olderthanhours
+def shouldDeleteBasedOnLastModified(dt_str):
+    # compareTime comes from args
+    if compareTime is not None:
+        keyCreateTime = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.%fZ") 
+        return keyCreateTime < compareTime
+    else:
+        return True
 
 # Our deletion worker, called by Threadpool
 def deleter(args, rmQueue, numThreads):
@@ -103,7 +114,8 @@ def deleter(args, rmQueue, numThreads):
         # Snatch a key off our deletion queue and add it
         # to our local deletion list
         rmKey = rmQueue.get()
-        rmKeys.append(rmKey)
+        if shouldDeleteBasedOnLastModified(rmKey.last_modified):
+            rmKeys.append(rmKey)
 
         # Poll our deletion queue until it is empty or
         # until we have accumulated enough keys in this
@@ -112,7 +124,8 @@ def deleter(args, rmQueue, numThreads):
             try:
                 if args.dryrun:
                     for key in rmKeys:
-                        logger.info("Would have deleted '%s'" % key.name)
+                        if shouldDeleteBasedOnLastModified(key.last_modified):
+                            logger.info("Would have deleted '%s' created at '%s' datecheck '%s'", key.name, key.last_modified, checkDate(key.last_modified))
                 else:
                     mybucket.delete_keys(rmKeys)
             except:
@@ -161,6 +174,13 @@ def main():
 
     # Set up the logging object
     loggerSetup(args)
+
+    # older than time
+    global compareTime
+    compareTime = None
+    if args.olderthanhours:
+        compareTime = datetime.utcnow() - timedelta(hours=args.olderthanhours)
+    logger.info("Initialized compareTime to %s", compareTime)
 
     rmQueue = Queue.Queue(maxsize=args.maxqueue)
 

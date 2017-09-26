@@ -49,7 +49,22 @@ Then:
 
     wget https://raw.github.com/eschwim/s3wipe/master/s3wipe
     chmod 755 s3wipe
-    
+
+### Using Docker
+
+Clone the repo:
+
+    git clone git@github.com:eschwim/s3wipe.git
+    cd s3wipe
+
+Build the Docker image:
+
+    docker build -t s3wipe:latest .
+
+Then run the script:
+
+    docker run s3wipe:latest --help
+
 ## Usage
 
 ```

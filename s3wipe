@@ -51,6 +51,9 @@ def getArgs():
     parser.add_argument("--maxqueue", 
         help="Max size of deletion queue (default 10k)", 
         type=int, default=10000)
+    parser.add_argument("--maxthreads",
+        help="Max number of threads (default 100)",
+        type=int, default=100)
     parser.add_argument("--delbucket", 
         help="If S3 path is a bucket path, delete the bucket also",
         action='store_true')
@@ -200,6 +203,11 @@ def main():
 
     # Now start all of our delete & list threads
     if listThreads > 0:
+        # Limit number of threads to specific maximum.
+        if (listThreads + deleteThreads) > args.maxthreads:
+            listThreads = args.maxthreads / 3
+            deleteThreads = args.maxthreads - listThreads
+        
         logger.info("Starting %s delete threads..." % deleteThreads)
         deleterPool = ThreadPool(processes=deleteThreads, 
             initializer=deleter, initargs=(args, rmQueue, deleteThreads))

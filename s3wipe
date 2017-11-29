@@ -4,7 +4,7 @@ import argparse, Queue, logging, random, sys
 import multiprocessing, signal, re
 from multiprocessing.pool import ThreadPool
 import boto.s3.connection
-
+from boto.s3.connection import OrdinaryCallingFormat
 version = "0.2"
 
 # Make sure we have a semi-recent version of boto installed
@@ -26,76 +26,85 @@ def s3Path(path):
         raise argparse.ArgumentTypeError(
             "must be in the 's3://bucket[/path]' format")
 
-# Fetch our command line arguments
+# Fetch our command line arguments 
 def getArgs():
     parser = argparse.ArgumentParser(
         prog="s3wipe",
         description="Recursively delete all keys in an S3 path",
-        formatter_class=lambda prog: 
+        formatter_class=lambda prog:
             argparse.HelpFormatter(prog,max_help_position=27))
 
     parser.add_argument("--path", type=s3Path,
         help="S3 path to delete (e.g. s3://bucket/path)", required=True)
-    parser.add_argument("--id", 
+    parser.add_argument("--id",
         help="Your AWS access key ID", required=False)
-    parser.add_argument("--key", 
+    parser.add_argument("--key",
         help="Your AWS secret access key", required=False)
-    parser.add_argument("--dryrun", 
-        help="Don't delete.  Print what we would have deleted", 
+    parser.add_argument("--dryrun",
+        help="Don't delete.  Print what we would have deleted",
         action='store_true')
-    parser.add_argument("--quiet", 
+    parser.add_argument("--quiet",
         help="Suprress all non-error output", action='store_true')
-    parser.add_argument("--batchsize", 
-        help="# of keys to batch delete (default 100)", 
+    parser.add_argument("--batchsize",
+        help="# of keys to batch delete (default 100)",
         type=int, default=100)
-    parser.add_argument("--maxqueue", 
-        help="Max size of deletion queue (default 10k)", 
+    parser.add_argument("--maxqueue",
+        help="Max size of deletion queue (default 10k)",
         type=int, default=10000)
     parser.add_argument("--maxthreads",
         help="Max number of threads (default 100)",
         type=int, default=100)
-    parser.add_argument("--delbucket", 
+    parser.add_argument("--delbucket",
         help="If S3 path is a bucket path, delete the bucket also",
         action='store_true')
+    parser.add_argument("--host",
+                        help=""" When using SigV4, you must specify a 'host' parameter.""",
+                        default="s3.amazonaws.com",
+                        required=False)
+
+    
 
     return parser.parse_args()
 
 
 # Set up our logging object
 def loggerSetup(args):
-                                                                              
-    # Set our maximum severity level to log (i.e. debug or not)               
+    
+    # Set our maximum severity level to log (i.e. debug or not)
     if args.quiet:
         logLevel = logging.ERROR
     else:
         logLevel = logging.DEBUG
-                                                                              
-    # Log configuration                                                       
-    logging.basicConfig(                                              
-        level=logLevel,                                               
-        format="%(asctime)s %(levelname)s: %(message)s",              
-        datefmt="[%Y-%m-%d@%H:%M:%S]"                                 
-    )                                                                 
-                                                                              
-    # Create logger and point it at our log file                              
-    global logger                                                             
-    logger = logging.getLogger("s3wipe")                                     
-                                                                              
-    # Make the logger emit all unhandled exceptions                           
+        
+    # Log configuration
+    logging.basicConfig(
+        level=logLevel,
+        format="%(asctime)s %(levelname)s: %(message)s",
+        datefmt="[%Y-%m-%d@%H:%M:%S]"
+    )
+    
+    # Create logger and point it at our log file
+    global logger
+    logger = logging.getLogger("s3wipe")
+    
+    # Make the logger emit all unhandled exceptions
     sys.excepthook = lambda t, v, x: logger.error(
         "Uncaught exception", exc_info=(t,v,x))
-                                                             
-    # Supress boto debug logging, since it is very chatty    
-    logging.getLogger("boto").setLevel(logging.CRITICAL)     
+        
+    # Supress boto debug logging, since it is very chatty
+    logging.getLogger("boto").setLevel(logging.CRITICAL)
 
 
 # Our deletion worker, called by Threadpool
 def deleter(args, rmQueue, numThreads):
 
     # Set up per-thread boto objects
-    myconn = boto.s3.connection.S3Connection(                                  
+    myconn = boto.s3.connection.S3Connection(
         aws_access_key_id=args.id,
-        aws_secret_access_key=args.key)
+        aws_secret_access_key=args.key,
+        host=args.host,
+        calling_format=OrdinaryCallingFormat()
+    )
     bucket, path = args.path
     mybucket = myconn.get_bucket(bucket)
 
@@ -143,9 +152,11 @@ def listInit(arg1, arg2):
 def lister(subDir):
 
     # Set up our per-thread boto connection
-    myconn = boto.s3.connection.S3Connection(                                  
+    myconn = boto.s3.connection.S3Connection(
         aws_access_key_id=args.id,
-        aws_secret_access_key=args.key)
+        host = args.host,
+        calling_format = OrdinaryCallingFormat()
+    )
     bucket, path = args.path
     mybucket = myconn.get_bucket(bucket)
 
@@ -181,9 +192,12 @@ def main():
 
     # Our main boto object.  Really only used to start the
     # watcher threads on a per-subdir basis
-    conn = boto.s3.connection.S3Connection(                                  
+    conn = boto.s3.connection.S3Connection(
         aws_access_key_id=args.id,
-        aws_secret_access_key=args.key)
+        aws_secret_access_key=args.key,
+        host = args.host,
+        calling_format = OrdinaryCallingFormat()
+    )
 
     try:
         mybucket = conn.get_bucket(bucket)

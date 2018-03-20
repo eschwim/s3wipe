@@ -4,8 +4,21 @@ import argparse, Queue, logging, random, sys
 import multiprocessing, signal, re
 from multiprocessing.pool import ThreadPool
 import boto.s3.connection
+import ssl
 
 version = "0.2"
+
+# CN mangling from:
+# https://stackoverflow.com/questions/28768530/certificateerror-hostname-doesnt-match
+_old_match_hostname = ssl.match_hostname
+
+def _new_match_hostname(cert, hostname):
+   if hostname.endswith('.s3.amazonaws.com'):
+      pos = hostname.find('.s3.amazonaws.com')
+      hostname = hostname[:pos].replace('.', '') + hostname[pos:]
+   return _old_match_hostname(cert, hostname)
+
+ssl.match_hostname = _new_match_hostname
 
 # Make sure we have a semi-recent version of boto installed
 try:

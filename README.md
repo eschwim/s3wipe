@@ -78,6 +78,7 @@ optional arguments:
   --path PATH            S3 path to delete (e.g. s3://bucket/path)
   --id ID                Your AWS access key ID
   --key KEY              Your AWS secret access key
+  --token TOKEN          Your AWS secret token
   --dryrun               Don't delete. Print what we would have deleted
   --quiet                Suprress all non-error output
   --batchsize BATCHSIZE  # of keys to batch delete (default 100)
@@ -87,6 +88,9 @@ optional arguments:
 ```
 
 ## Changelog
+_v0.3_
+    You can now specify an AWS security token, which is required when using
+    temporary credentials.  (eg, AssumeRole / AssumeRoleWithSAML)
 
 _v0.2_
 

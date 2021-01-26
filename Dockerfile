@@ -1,11 +1,9 @@
-FROM debian:stretch
+FROM python:3
 
 WORKDIR /opt/s3wipe
 
-RUN apt-get -y update
-RUN apt-get -y install python-boto
-
 COPY . ./
+RUN pip install --no-cache-dir -r requirements.txt
 RUN chmod 755 s3wipe
 
 ENTRYPOINT ["./s3wipe"]

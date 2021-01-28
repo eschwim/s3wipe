@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-import argparse, Queue, logging, random, sys
+import argparse, queue, logging, random, sys
 import multiprocessing, signal, re
 from multiprocessing.pool import ThreadPool
 import boto.s3.connection
@@ -13,7 +13,7 @@ try:
     if tuple(map(int, boto.__version__.split("."))) < (2,5,2): 
         raise Exception
 except:
-    print "ERROR: s3wipe requires boto v2.5.2 or later!"
+    print("ERROR: s3wipe requires boto v2.5.2 or later!")
     sys.exit(1)
 
 # Format specifier for our S3 object
@@ -165,7 +165,7 @@ def main():
     # Set up the logging object
     loggerSetup(args)
 
-    rmQueue = Queue.Queue(maxsize=args.maxqueue)
+    rmQueue = queue.Queue(maxsize=args.maxqueue)
 
     # Catch ctrl-c to exit cleanly
     signal.signal(signal.SIGINT, lambda x,y: sys.exit(0))

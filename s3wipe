@@ -57,6 +57,9 @@ def getArgs():
     parser.add_argument("--delbucket", 
         help="If S3 path is a bucket path, delete the bucket also",
         action='store_true')
+    parser.add_argument("--verbose",
+        help="Print more frequent status messages",
+        action='store_true')
 
     return parser.parse_args()
 
@@ -126,7 +129,9 @@ def deleter(args, rmQueue, numThreads):
             rmKeys = []
 
             # Print some progress info
-            if random.randint(0,numThreads) == numThreads and not args.dryrun:
+            if args.verbose or \
+                    random.randint(0, numThreads) == numThreads and \
+                    not args.dryrun:
                 logger.info("Deleted %s out of %s keys found thus far.",
                     keysDeleted.value, keysFound.value)
 

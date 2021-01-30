@@ -40,6 +40,8 @@ def getArgs():
         help="Your AWS access key ID", required=False)
     parser.add_argument("--key", 
         help="Your AWS secret access key", required=False)
+    parser.add_argument("--token",
+        help="Your AWS access token", required=False)
     parser.add_argument("--dryrun", 
         help="Don't delete.  Print what we would have deleted", 
         action='store_true')
@@ -95,7 +97,8 @@ def deleter(args, rmQueue, numThreads):
     # Set up per-thread boto objects
     myconn = boto.s3.connection.S3Connection(                                  
         aws_access_key_id=args.id,
-        aws_secret_access_key=args.key)
+        aws_secret_access_key=args.key,
+        security_token=args.token)
     bucket, path = args.path
     mybucket = myconn.get_bucket(bucket)
 
@@ -145,7 +148,8 @@ def lister(subDir):
     # Set up our per-thread boto connection
     myconn = boto.s3.connection.S3Connection(                                  
         aws_access_key_id=args.id,
-        aws_secret_access_key=args.key)
+        aws_secret_access_key=args.key,
+	    security_token=args.token)
     bucket, path = args.path
     mybucket = myconn.get_bucket(bucket)
 
@@ -183,7 +187,8 @@ def main():
     # watcher threads on a per-subdir basis
     conn = boto.s3.connection.S3Connection(                                  
         aws_access_key_id=args.id,
-        aws_secret_access_key=args.key)
+        aws_secret_access_key=args.key,
+        security_token=args.token)
 
     try:
         mybucket = conn.get_bucket(bucket)

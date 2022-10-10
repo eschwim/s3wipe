@@ -205,7 +205,7 @@ def main():
     if listThreads > 0:
         # Limit number of threads to specific maximum.
         if (listThreads + deleteThreads) > args.maxthreads:
-            listThreads = int(args.maxthreads / 3)
+            listThreads = args.maxthreads // 3
             deleteThreads = args.maxthreads - listThreads
         
         logger.info("Starting %s delete threads..." % deleteThreads)
